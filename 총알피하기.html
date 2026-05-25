@@ -258,6 +258,8 @@ let paused = false;
 let streak = 0;
 let streakMsg = '';
 let streakAlpha = 0;
+let muted = false;
+let leaderboard = JSON.parse(localStorage.getItem('bulletLeaderboard') || '[]');
 
 // Parallax star layers
 function initStars() {
@@ -449,6 +451,12 @@ function drawHUD() {
     ctx.fillText(`🔥 ${streak}연속`, W-10, H-14);
   }
 
+  // Mute indicator
+  ctx.textAlign = 'right';
+  ctx.font = '16px monospace';
+  ctx.fillStyle = muted ? '#ff6666' : '#88ccff';
+  ctx.fillText(muted ? '🔇' : '🔊', W-10, H-28);
+
   // Quiz incoming warning
   if (ratio < 0.2) {
     ctx.save();
@@ -486,6 +494,33 @@ function spawnExplosion(x, y, color, count=22) {
     const a = Math.random()*Math.PI*2;
     particles.push({ x, y, vx:Math.cos(a)*(6+Math.random()*4), vy:Math.sin(a)*(6+Math.random()*4), r:1.5, life:20, maxLife:20, color:'#ffffff', glow:true });
   }
+}
+
+function updateLeaderboard(t) {
+  leaderboard.push(parseFloat(t.toFixed(1)));
+  leaderboard.sort((a,b)=>b-a);
+  leaderboard = leaderboard.slice(0,5);
+  localStorage.setItem('bulletLeaderboard', JSON.stringify(leaderboard));
+}
+
+function drawLeaderboard(cx, cy) {
+  if (leaderboard.length === 0) return;
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,30,0.7)';
+  ctx.strokeStyle = '#3344aa';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(cx-110, cy-10, 220, 20+leaderboard.length*22+10, 8); ctx.fill(); ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('🏆 TOP 5', cx, cy+8);
+  const medals = ['🥇','🥈','🥉','④','⑤'];
+  leaderboard.forEach((t,i) => {
+    ctx.font = i===0 ? 'bold 13px monospace' : '12px monospace';
+    ctx.fillStyle = i===0 ? '#ffee44' : '#aabbff';
+    ctx.fillText(`${medals[i]} ${t.toFixed(1)}초`, cx, cy+28+i*22);
+  });
+  ctx.restore();
 }
 
 function spawnConfetti(cx, cy) {
@@ -626,7 +661,11 @@ function drawResultOverlay() {
   if (!resultCorrect) {
     ctx.font = 'bold 20px "맑은 고딕", sans-serif';
     ctx.fillStyle = '#ffaaaa'; ctx.shadowBlur=8;
-    ctx.fillText('총알 50개 발사!', 0, 68);
+    ctx.fillText('총알 50개 발사!', 0, 62);
+    ctx.font = '15px "맑은 고딕", sans-serif';
+    ctx.fillStyle = '#ffffaa'; ctx.shadowBlur=4;
+    const correctAns = quizQuestion ? (quizQuestion.a ? '정답: O (맞음)' : '정답: X (틀림)') : '';
+    ctx.fillText(correctAns, 0, 90);
   }
   ctx.restore();
 }
@@ -684,19 +723,22 @@ function drawStart(dt) {
     '15초마다 상식 O/X 문제가 출제됩니다.',
     '틀리면 총알 50개가 한꺼번에 날아옵니다!',
     '목숨 ♥♥♥  —  총알에 맞으면 목숨을 잃습니다.',
-    '',
+    'ESC/P: 일시정지  |  M: 음소거',
   ];
   lines.forEach((l,i) => ctx.fillText(l, W/2, 222+i*30));
 
   // Best time
   ctx.fillStyle='#ffcc00';
   ctx.font='bold 18px monospace';
-  ctx.fillText(`🏆 최고 기록: ${bestTime.toFixed(1)}초`, W/2, 378);
+  ctx.fillText(`🏆 최고 기록: ${bestTime.toFixed(1)}초`, W/2, 375);
+
+  // Leaderboard
+  drawLeaderboard(W/2, 395);
 
   // Pulsing start button
   const pulse = 1+0.05*Math.sin(now*4);
   ctx.save();
-  ctx.translate(W/2, 430); ctx.scale(pulse, pulse);
+  ctx.translate(W/2, 520); ctx.scale(pulse, pulse);
   ctx.shadowColor='#ffee00'; ctx.shadowBlur=20;
   ctx.fillStyle='rgba(80,60,0,0.8)';
   ctx.beginPath(); ctx.roundRect(-150,-22,300,46,12); ctx.fill();
@@ -739,9 +781,12 @@ function drawDead() {
     ctx.fillText(`최고 기록: ${bestTime.toFixed(1)}초`, W/2, H/2+18);
   }
 
+  // Leaderboard on dead screen
+  drawLeaderboard(W/2, H/2+48);
+
   const pulse = 1+0.04*Math.sin(now*4);
   ctx.save();
-  ctx.translate(W/2, H/2+80); ctx.scale(pulse,pulse);
+  ctx.translate(W/2, H/2+170); ctx.scale(pulse,pulse);
   ctx.fillStyle='rgba(0,80,0,0.7)';
   ctx.beginPath(); ctx.roundRect(-130,-18,260,38,10); ctx.fill();
   ctx.strokeStyle='#88ff88'; ctx.lineWidth=1.5; ctx.stroke();
@@ -793,6 +838,7 @@ function checkHit() {
       if (lives<=0) {
         isNewRecord = time > bestTime;
         if (isNewRecord) { bestTime=time; localStorage.setItem('bulletBest',bestTime); }
+        updateLeaderboard(time);
         state='dead';
         stopBGM();
         snd.gameOver();
@@ -965,6 +1011,11 @@ document.addEventListener('keydown', e=>{
   if(state==='start'||state==='dead'){startGame();return;}
   if((e.key==='Escape'||e.key==='p'||e.key==='P') && (state==='play'||paused)) {
     paused=!paused;
+    return;
+  }
+  if(e.key==='m'||e.key==='M') {
+    muted=!muted;
+    masterGain.gain.value = muted ? 0 : 0.7;
     return;
   }
   if(paused) return;
