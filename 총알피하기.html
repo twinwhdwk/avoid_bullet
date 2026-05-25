@@ -77,6 +77,31 @@ const quizData = [
   {q:"광합성의 결과로 산소가 발생한다",a:true},{q:"식물의 잎에 엽록소가 있다",a:true},
   {q:"곰팡이는 식물이다",a:false},{q:"체온은 약 36.5도다",a:true},
   {q:"혈액은 산소를 운반한다",a:true},{q:"심장은 근육으로 이루어져 있다",a:true},
+  // 추가 문제
+  {q:"지구의 위성은 달 하나뿐이다",a:true},{q:"태양계 행성 수는 8개다",a:true},
+  {q:"금성은 태양계에서 가장 뜨거운 행성이다",a:true},{q:"토성에는 고리가 있다",a:true},
+  {q:"혜성은 태양 가까이 오면 꼬리가 생긴다",a:true},{q:"블랙홀은 빛도 빠져나오지 못한다",a:true},
+  {q:"북극성은 항상 북쪽 하늘에 있다",a:true},{q:"무지개는 7가지 색깔이다",a:true},
+  {q:"번개는 높은 곳에 잘 떨어진다",a:true},{q:"눈 결정은 모두 모양이 다르다",a:true},
+  {q:"사막에는 비가 전혀 오지 않는다",a:false},{q:"바닷물은 민물보다 무겁다",a:true},
+  {q:"다이아몬드는 탄소로 이루어져 있다",a:true},{q:"유리는 액체가 굳은 것이다",a:false},
+  {q:"조선 시대에 과거 시험이 있었다",a:true},{q:"고려청자는 세계적으로 유명하다",a:true},
+  {q:"단오는 음력 5월 5일이다",a:true},{q:"추석은 음력 8월 15일이다",a:true},
+  {q:"설날은 음력 1월 1일이다",a:true},{q:"한국의 화폐는 '원'이다",a:true},
+  {q:"한강은 서울을 가로지른다",a:true},{q:"백두산은 북한에 있다",a:true},
+  {q:"한라산은 제주도에 있다",a:true},{q:"경복궁은 서울에 있다",a:true},
+  {q:"분수에서 분모는 위에 있다",a:false},{q:"원의 넓이는 반지름×반지름×π다",a:true},
+  {q:"직각은 90도다",a:true},{q:"정삼각형의 세 각은 모두 같다",a:true},
+  {q:"이등변삼각형은 두 변의 길이가 같다",a:true},{q:"마름모의 네 변의 길이는 모두 같다",a:true},
+  {q:"시속 60km는 1분에 1km 이동한다",a:true},{q:"1km는 1000m다",a:true},
+  {q:"1시간은 3600초다",a:true},{q:"1주일은 8일이다",a:false},
+  {q:"사자는 초식동물이다",a:false},{q:"코끼리는 가장 큰 육상동물이다",a:true},
+  {q:"펭귄은 날지 못한다",a:true},{q:"박쥐는 포유류다",a:true},
+  {q:"상어는 포유류다",a:false},{q:"고래는 물고기다",a:false},
+  {q:"문어는 다리가 8개다",a:true},{q:"거미는 곤충이다",a:false},
+  {q:"나비는 애벌레에서 변태한다",a:true},{q:"개구리는 양서류다",a:true},
+  {q:"주어진 일을 미루는 습관은 좋지 않다",a:true},{q:"책을 많이 읽으면 도움이 된다",a:true},
+  {q:"'빠르다'의 반의어는 '느리다'다",a:true},{q:"국어 맞춤법에서 '되'와 '돼'는 구분해야 한다",a:true},
 ];
 
 // === AUDIO ===
@@ -228,6 +253,11 @@ let screenShake = 0;
 let thrusterParts = [];
 let titleAnim = 0;
 let isNewRecord = false;
+let invincible = 0;
+let paused = false;
+let streak = 0;
+let streakMsg = '';
+let streakAlpha = 0;
 
 // Parallax star layers
 function initStars() {
@@ -404,6 +434,21 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(255,255,255,0.8)';
   ctx.fillRect(W*ratio - 2, H-8, 3, 8);
 
+  // Wave indicator
+  const wave = 1 + Math.floor(time/15);
+  ctx.fillStyle = 'rgba(150,180,255,0.7)';
+  ctx.font = '13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`WAVE ${wave}`, 10, H-14);
+
+  // Streak display
+  if (streak >= 2) {
+    ctx.fillStyle = '#ffaa00';
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`🔥 ${streak}연속`, W-10, H-14);
+  }
+
   // Quiz incoming warning
   if (ratio < 0.2) {
     ctx.save();
@@ -545,7 +590,14 @@ function answerQuiz(ans) {
   quizAnswered = true;
   resultCorrect = (ans === quizQuestion.a);
   if (!resultCorrect) penaltyPending = true;
-  resultCorrect ? snd.correct() : snd.wrong();
+  if (resultCorrect) {
+    streak++;
+    snd.correct();
+    if (streak >= 3) { streakMsg = `🔥 ${streak}연속 정답!`; streakAlpha = 2.5; }
+  } else {
+    streak = 0;
+    snd.wrong();
+  }
   resultTimer = 1.8;
   state = 'result';
 }
@@ -699,8 +751,35 @@ function drawDead() {
   ctx.restore();
 }
 
+// === EDGE WARNINGS ===
+function drawEdgeWarnings() {
+  const margin = 28;
+  bullets.forEach(b => {
+    // Only warn for bullets heading toward the play area
+    const dx = W/2 - b.x, dy = H/2 - b.y;
+    const dot = b.vx*dx + b.vy*dy;
+    if (dot <= 0) return;
+    let ex, ey, angle;
+    if (b.x < 0)      { ex=margin;   ey=Math.max(margin,Math.min(H-margin,b.y)); angle=0; }
+    else if(b.x > W)  { ex=W-margin; ey=Math.max(margin,Math.min(H-margin,b.y)); angle=Math.PI; }
+    else if(b.y < 0)  { ex=Math.max(margin,Math.min(W-margin,b.x)); ey=margin;   angle=Math.PI/2; }
+    else if(b.y > H)  { ex=Math.max(margin,Math.min(W-margin,b.x)); ey=H-margin; angle=-Math.PI/2; }
+    else return;
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.rotate(angle);
+    ctx.fillStyle = b.penalty ? 'rgba(255,50,50,0.85)' : 'rgba(255,220,0,0.7)';
+    ctx.shadowColor = b.penalty ? '#ff0000' : '#ffcc00';
+    ctx.shadowBlur = 6;
+    ctx.beginPath(); ctx.moveTo(8,0); ctx.lineTo(-5,-5); ctx.lineTo(-5,5); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
 // === COLLISION ===
 function checkHit() {
+  if (invincible > 0) return;
   for (let i=bullets.length-1; i>=0; i--) {
     const b=bullets[i], dx=b.x-ship.x, dy=b.y-ship.y;
     if (dx*dx+dy*dy < 10*10) {
@@ -709,7 +788,8 @@ function checkHit() {
       snd.hit();
       lives--;
       hitFlash=25;
-      screenShake=12;
+      screenShake=14;
+      invincible=1.5;
       if (lives<=0) {
         isNewRecord = time > bestTime;
         if (isNewRecord) { bestTime=time; localStorage.setItem('bulletBest',bestTime); }
@@ -743,6 +823,11 @@ function loop(ts) {
 
   if (state==='start') { drawStart(dt); ctx.restore(); return; }
   if (state==='dead')  { drawDead();    drawParticles(); ctx.restore(); return; }
+  if (paused) {
+    // Draw frozen game then overlay
+    drawThruster(); drawParticles(); drawShip(ship.x, ship.y); drawHUD();
+    drawPauseScreen(); ctx.restore(); return;
+  }
 
   // Ship keyboard movement
   if (state==='play'||state==='countdown') {
@@ -761,6 +846,9 @@ function loop(ts) {
 
   if (state==='play') {
     time+=dt;
+    if (invincible>0) invincible-=dt;
+    // Streak message fade
+    if (streakAlpha>0) streakAlpha-=dt*1.2;
     const batchSize = 1+Math.floor(time/15)*2;
     if (Math.random()<spawnRate*60*dt) {
       for(let i=0;i<batchSize;i++) spawnBullet(false);
@@ -809,10 +897,33 @@ function loop(ts) {
 
   if(state==='play') checkHit();
 
+  drawEdgeWarnings();
   drawThruster();
   drawParticles();
   drawShip(ship.x, ship.y);
   if(hitFlash>0) hitFlash--;
+
+  // Streak message
+  if (streakAlpha>0 && streakMsg) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, streakAlpha);
+    ctx.fillStyle = '#ffaa00';
+    ctx.shadowColor = '#ff8800'; ctx.shadowBlur = 15;
+    ctx.font = 'bold 28px "맑은 고딕", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(streakMsg, W/2, H/2 - 60);
+    ctx.restore();
+  }
+
+  // Invincible flash overlay
+  if (invincible>0 && Math.floor(invincible*10)%2===0) {
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = '#00ccff';
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
   drawHUD();
 
   if(state==='quiz')      drawQuizOverlay();
@@ -831,12 +942,32 @@ function startGame() {
   quizAnswered=false; penaltyPending=false;
   resultTimer=0; countdownTimer=0;
   hitFlash=0; screenShake=0; isNewRecord=false;
+  invincible=0; paused=false; streak=0; streakAlpha=0;
   startBGM();
+}
+
+function drawPauseScreen() {
+  ctx.fillStyle='rgba(0,0,20,0.75)';
+  ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#ffffff';
+  ctx.font='bold 44px "맑은 고딕", monospace';
+  ctx.textAlign='center';
+  ctx.shadowColor='#00ccff'; ctx.shadowBlur=20;
+  ctx.fillText('⏸ 일시정지', W/2, H/2-30);
+  ctx.shadowBlur=0;
+  ctx.font='18px "맑은 고딕", sans-serif';
+  ctx.fillStyle='#aaddff';
+  ctx.fillText('ESC 또는 P 키를 눌러 계속', W/2, H/2+20);
 }
 
 document.addEventListener('keydown', e=>{
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
   if(state==='start'||state==='dead'){startGame();return;}
+  if((e.key==='Escape'||e.key==='p'||e.key==='P') && (state==='play'||paused)) {
+    paused=!paused;
+    return;
+  }
+  if(paused) return;
   if(state==='quiz'){
     if(e.key==='1') answerQuiz(true);
     if(e.key==='2') answerQuiz(false);
