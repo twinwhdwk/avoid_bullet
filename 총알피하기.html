@@ -102,6 +102,25 @@ const quizData = [
   {q:"나비는 애벌레에서 변태한다",a:true},{q:"개구리는 양서류다",a:true},
   {q:"주어진 일을 미루는 습관은 좋지 않다",a:true},{q:"책을 많이 읽으면 도움이 된다",a:true},
   {q:"'빠르다'의 반의어는 '느리다'다",a:true},{q:"국어 맞춤법에서 '되'와 '돼'는 구분해야 한다",a:true},
+  // 추가 문제 2차
+  {q:"공기 중에서 가장 많은 기체는 질소다",a:true},{q:"지렁이는 폐로 호흡한다",a:false},
+  {q:"새는 온혈동물이다",a:true},{q:"식물의 뿌리는 물과 양분을 흡수한다",a:true},
+  {q:"지구 내부의 핵은 매우 뜨겁다",a:true},{q:"빙하가 녹으면 해수면이 올라간다",a:true},
+  {q:"진자의 주기는 진폭에 관계없이 일정하다",a:true},{q:"소금은 나트륨과 염소로 이루어져 있다",a:true},
+  {q:"산호초는 동물이다",a:true},{q:"바이러스는 스스로 증식할 수 있다",a:false},
+  {q:"넓이의 단위는 제곱미터(m²)다",a:true},{q:"30의 약수 중 가장 큰 수는 30이다",a:true},
+  {q:"5의 배수는 항상 0 또는 5로 끝난다",a:true},{q:"원기둥의 두 밑면은 서로 평행하다",a:true},
+  {q:"정오각형의 한 내각은 108도다",a:true},{q:"두 수의 최대공약수는 두 수보다 클 수 없다",a:true},
+  {q:"고려를 세운 사람은 왕건이다",a:true},{q:"조선의 수도는 한양이었다",a:true},
+  {q:"이순신 장군의 시호는 충무공이다",a:true},{q:"안중근은 3·1 운동을 이끌었다",a:false},
+  {q:"을지문덕은 살수대첩에서 승리했다",a:true},{q:"원효대사는 신라 시대 승려다",a:true},
+  {q:"강화도 조약은 1876년에 체결됐다",a:true},{q:"조선의 마지막 왕은 순종이다",a:true},
+  {q:"훈민정음을 반포한 왕은 세종대왕이다",a:true},{q:"삼국유사를 쓴 사람은 일연이다",a:true},
+  {q:"아프리카 대륙에는 적도가 지나간다",a:true},{q:"한국과 일본 사이에는 대한해협이 있다",a:true},
+  {q:"지중해는 유럽과 아프리카 사이에 있다",a:true},{q:"아마존강은 남아메리카에서 가장 긴 강이다",a:true},
+  {q:"북반구에서 여름은 6~8월이다",a:true},{q:"태양에서 지구까지 빛이 도달하는 데 약 8분 걸린다",a:true},
+  {q:"한국어의 주어는 항상 문장 처음에 온다",a:false},{q:"받침이 없는 글자를 열린음절이라 한다",a:true},
+  {q:"태권도는 한국의 전통 무예다",a:true},{q:"한국의 국화는 무궁화다",a:true},
 ];
 
 // === AUDIO ===
@@ -184,6 +203,12 @@ const snd = {
   newRecord() {
     [523,659,784,880,1047,1319].forEach((f,i) => setTimeout(()=>playTone(f,'sine',0.3,0.25,null,true), i*100));
   },
+  shield() {
+    [440,550,660,880].forEach((f,i) => setTimeout(()=>playTone(f,'sine',0.18,0.22,null,true), i*60));
+  },
+  lifeUp() {
+    [523,659,784,1047].forEach((f,i) => setTimeout(()=>playTone(f,'sine',0.22,0.28,null,true), i*70));
+  },
 };
 
 // BGM
@@ -260,6 +285,8 @@ let streakMsg = '';
 let streakAlpha = 0;
 let muted = false;
 let leaderboard = JSON.parse(localStorage.getItem('bulletLeaderboard') || '[]');
+let powerups = [];
+let lastPowerupTime = -20;
 
 // Parallax star layers
 function initStars() {
@@ -531,6 +558,49 @@ function spawnConfetti(cx, cy) {
   }
 }
 
+// === POWERUP SYSTEM ===
+function spawnPowerup() {
+  powerups.push({ x:80+Math.random()*(W-160), y:80+Math.random()*(H-160), type:'shield', timer:9, pulse:0 });
+}
+
+function drawPowerups(dt) {
+  powerups = powerups.filter(p => p.timer > 0);
+  powerups.forEach(p => {
+    p.timer -= dt;
+    p.pulse += dt * 4;
+    const a = Math.min(1, p.timer * 0.6);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 2;
+    ctx.shadowColor = '#00ffff';
+    ctx.shadowBlur = 10 + 5*Math.sin(p.pulse);
+    ctx.beginPath(); ctx.arc(p.x, p.y, 14+3*Math.sin(p.pulse), 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,200,255,0.25)';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#00ffff';
+    ctx.font = '15px monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 8;
+    ctx.fillText('🛡', p.x, p.y);
+    ctx.restore();
+  });
+}
+
+function checkPowerupCollect() {
+  for (let i = powerups.length-1; i >= 0; i--) {
+    const p = powerups[i];
+    const dx = p.x-ship.x, dy = p.y-ship.y;
+    if (dx*dx+dy*dy < 22*22) {
+      powerups.splice(i, 1);
+      invincible = 3;
+      snd.shield();
+      spawnExplosion(ship.x, ship.y, '#00ffff', 16);
+      streakMsg = '🛡 보호막 획득!'; streakAlpha = 2.2;
+    }
+  }
+}
+
 // === BULLET SYSTEM ===
 function spawnBullet(penalty) {
   const side = Math.floor(Math.random()*4);
@@ -628,7 +698,13 @@ function answerQuiz(ans) {
   if (resultCorrect) {
     streak++;
     snd.correct();
-    if (streak >= 3) { streakMsg = `🔥 ${streak}연속 정답!`; streakAlpha = 2.5; }
+    if (streak % 5 === 0) {
+      lives = Math.min(3, lives + 1);
+      snd.lifeUp();
+      streakMsg = `❤️ ${streak}연속! 목숨 회복!`; streakAlpha = 3;
+    } else if (streak >= 3) {
+      streakMsg = `🔥 ${streak}연속 정답!`; streakAlpha = 2.5;
+    }
   } else {
     streak = 0;
     snd.wrong();
@@ -723,7 +799,8 @@ function drawStart(dt) {
     '15초마다 상식 O/X 문제가 출제됩니다.',
     '틀리면 총알 50개가 한꺼번에 날아옵니다!',
     '목숨 ♥♥♥  —  총알에 맞으면 목숨을 잃습니다.',
-    'ESC/P: 일시정지  |  M: 음소거',
+    '🛡 방패 아이템: 30초마다 등장, 먹으면 3초 무적!',
+    '5연속 정답 시 목숨 1개 회복  |  ESC/P: 정지  |  M: 음소거',
   ];
   lines.forEach((l,i) => ctx.fillText(l, W/2, 222+i*30));
 
@@ -901,6 +978,7 @@ function loop(ts) {
       if(Math.random()<0.4) snd.shoot();
     }
     if (time-lastQuizTime>=15) { state='quiz'; pickQuiz(); }
+    if (time-lastPowerupTime>=30 && powerups.length===0) { spawnPowerup(); lastPowerupTime=time; }
   }
 
   if (state==='quiz') {
@@ -941,8 +1019,9 @@ function loop(ts) {
     drawBullet(b);
   }
 
-  if(state==='play') checkHit();
+  if(state==='play') { checkHit(); checkPowerupCollect(); }
 
+  drawPowerups(state==='play' ? dt : 0);
   drawEdgeWarnings();
   drawThruster();
   drawParticles();
@@ -989,6 +1068,7 @@ function startGame() {
   resultTimer=0; countdownTimer=0;
   hitFlash=0; screenShake=0; isNewRecord=false;
   invincible=0; paused=false; streak=0; streakAlpha=0;
+  powerups=[]; lastPowerupTime=-20;
   startBGM();
 }
 
