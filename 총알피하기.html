@@ -178,6 +178,43 @@ const quizData = [
   {q:"심장은 근육으로 이루어져 있다",a:true},
 ];
 
+// === AUDIO ===
+const AC = new (window.AudioContext || window.webkitAudioContext)();
+function resumeAC() { if (AC.state === 'suspended') AC.resume(); }
+document.addEventListener('keydown', resumeAC);
+document.addEventListener('click', resumeAC);
+
+function playTone(freq, type, dur, vol=0.3, startFreq=null) {
+  const o = AC.createOscillator();
+  const g = AC.createGain();
+  o.connect(g); g.connect(AC.destination);
+  o.type = type;
+  if (startFreq) { o.frequency.setValueAtTime(startFreq, AC.currentTime); o.frequency.exponentialRampToValueAtTime(freq, AC.currentTime + dur * 0.5); }
+  else o.frequency.setValueAtTime(freq, AC.currentTime);
+  g.gain.setValueAtTime(vol, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+  o.start(); o.stop(AC.currentTime + dur);
+}
+function playNoise(dur, vol=0.15) {
+  const buf = AC.createBuffer(1, AC.sampleRate * dur, AC.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random()*2-1;
+  const src = AC.createBufferSource();
+  const g = AC.createGain();
+  src.buffer = buf; src.connect(g); g.connect(AC.destination);
+  g.gain.setValueAtTime(vol, AC.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+  src.start();
+}
+const snd = {
+  shoot()   { playTone(180, 'sawtooth', 0.08, 0.08, 400); },
+  hit()     { playNoise(0.18, 0.3); playTone(120, 'square', 0.15, 0.2); },
+  correct() { playTone(523, 'sine', 0.1, 0.3); setTimeout(()=>playTone(659, 'sine', 0.15, 0.3), 100); setTimeout(()=>playTone(784, 'sine', 0.2, 0.3), 200); },
+  wrong()   { playTone(220, 'sawtooth', 0.15, 0.3); setTimeout(()=>playTone(160, 'sawtooth', 0.2, 0.3), 150); },
+  countdown(n) { playTone(n===1?880:440, 'sine', 0.12, 0.25); },
+  penalty() { for(let i=0;i<5;i++) setTimeout(()=>{ playTone(300,'sawtooth',0.05,0.1,600); },i*60); },
+};
+
 // === KEYBOARD STATE ===
 const keys = {};
 document.addEventListener('keydown', e => { keys[e.key] = true; });
@@ -185,24 +222,25 @@ document.addEventListener('keyup', e => { keys[e.key] = false; });
 const SHIP_SPEED = 220; // px/s
 
 // === GAME STATE ===
-let state = 'start'; // start, play, quiz, dead
+let state = 'start'; // start, play, quiz, result, countdown, dead
 let ship = { x: W/2, y: H/2 };
 let bullets = [];
 let stars = [];
-let time = 0; // survival seconds
+let time = 0;
 let bestTime = parseFloat(localStorage.getItem('bulletBest') || '0');
 let lives = 3;
-let quizTimer = 15;
 let quizQuestion = null;
 let quizCountdown = 10;
 let quizAnswered = false;
 let lastQuizTime = 0;
-let spawnRate = 0.03; // bullets per frame
+let spawnRate = 0.03;
 let baseSpeed = 76; // px/s
-let frameTime = 0;
 let lastTime = 0;
 let particles = [];
 let penaltyPending = false;
+let resultCorrect = false;
+let resultTimer = 0;
+let countdownTimer = 0;
 
 // Init stars
 for (let i = 0; i < 180; i++) {
@@ -325,7 +363,7 @@ function spawnBullet(penalty) {
   else { x = -8; y = Math.random()*H; }
   const dx = tx - x, dy = ty - y;
   const dist = Math.sqrt(dx*dx + dy*dy) || 1;
-  const spd = (baseSpeed + time*3) * (penalty ? 1.5 : 1);
+  const spd = (baseSpeed + time*2) * (penalty ? 1.1 : 1);
   vx = dx/dist * spd;
   vy = dy/dist * spd;
   bullets.push({ x, y, vx, vy, penalty: !!penalty });
@@ -396,34 +434,62 @@ function drawQuizOverlay() {
 function answerQuiz(ans) {
   if (quizAnswered) return;
   quizAnswered = true;
-  if (ans === quizQuestion.a) {
-    // Correct
-    showMsg('정답! ✨', '#00ff88');
-  } else {
-    // Wrong — 50 penalty bullets
-    showMsg('틀렸다! 💥 총알 50개!', '#ff4444');
-    penaltyPending = true;
-  }
-  setTimeout(() => {
-    state = 'play';
-    lastQuizTime = time;
-    if (penaltyPending) { spawnPenalty(); penaltyPending = false; }
-  }, 900);
+  resultCorrect = (ans === quizQuestion.a);
+  if (!resultCorrect) penaltyPending = true;
+  resultCorrect ? snd.correct() : snd.wrong();
+  resultTimer = 1.8;
+  state = 'result';
 }
 
-let msgText = '', msgColor = '#fff', msgAlpha = 0;
-function showMsg(t, c) { msgText = t; msgColor = c; msgAlpha = 1.5; }
-
-function drawMsg() {
-  if (msgAlpha <= 0) return;
+function drawResultOverlay() {
+  const fade = Math.min(1, resultTimer / 0.6);
   ctx.save();
-  ctx.globalAlpha = Math.min(1, msgAlpha);
-  ctx.fillStyle = msgColor;
-  ctx.font = 'bold 30px "맑은 고딕", monospace';
-  ctx.textAlign = 'center';
-  ctx.fillText(msgText, W/2, H/2 - 120);
+  ctx.globalAlpha = fade * 0.6;
+  ctx.fillStyle = resultCorrect ? '#004422' : '#440000';
+  ctx.fillRect(0, 0, W, H);
   ctx.restore();
-  msgAlpha -= 0.03;
+
+  const scale = 1 + Math.max(0, (resultTimer - 1.2)) * 0.8;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, fade * 1.5);
+  ctx.translate(W/2, H/2);
+  ctx.scale(scale, scale);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = resultCorrect ? '#00ff88' : '#ff3333';
+  ctx.font = 'bold 100px "맑은 고딕", sans-serif';
+  ctx.fillText(resultCorrect ? '정답!' : '오답!', 0, 0);
+  if (!resultCorrect) {
+    ctx.font = 'bold 22px "맑은 고딕", sans-serif';
+    ctx.fillStyle = '#ffaaaa';
+    ctx.fillText('총알 50개가 날아옵니다!', 0, 70);
+  }
+  ctx.restore();
+}
+
+function drawCountdownOverlay() {
+  const num = Math.ceil(countdownTimer);
+  if (num <= 0) return;
+  const age = 1 - (countdownTimer % 1);
+  const scale = 1.5 - age * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(W/2, H/2);
+  ctx.scale(scale, scale);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffee00';
+  ctx.font = 'bold 140px monospace';
+  ctx.fillText(num, 0, 0);
+  ctx.restore();
+  ctx.fillStyle = '#aaddff';
+  ctx.font = '18px "맑은 고딕", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('준비하세요!', W/2, H/2 + 90);
 }
 
 // === SCREENS ===
@@ -480,7 +546,9 @@ function checkHit() {
     if (dx*dx + dy*dy < r*r) {
       spawnExplosion(b.x, b.y, b.penalty ? '#ff4444' : '#ffaa00');
       bullets.splice(i, 1);
+      snd.hit();
       lives--;
+      hitFlash = 20;
       if (lives <= 0) {
         if (time > bestTime) { bestTime = time; localStorage.setItem('bulletBest', bestTime); }
         state = 'dead';
@@ -505,8 +573,8 @@ function loop(ts) {
   if (state === 'start') { drawStart(); return; }
   if (state === 'dead') { drawDead(); drawParticles(); return; }
 
-  // Ship movement (keyboard)
-  if (state === 'play') {
+  // Ship movement (keyboard) — allowed in play and countdown
+  if (state === 'play' || state === 'countdown') {
     let dx = 0, dy = 0;
     if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx -= 1;
     if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += 1;
@@ -519,10 +587,12 @@ function loop(ts) {
 
   if (state === 'play') {
     time += dt;
-    // Spawn bullets
-    const rate = spawnRate + time * 0.0008;
-    if (Math.random() < rate * 60 * dt) spawnBullet(false);
-
+    // Spawn: batch size grows by 2 every 15s
+    const batchSize = 1 + Math.floor(time / 15) * 2;
+    if (Math.random() < spawnRate * 60 * dt) {
+      for (let i = 0; i < batchSize; i++) spawnBullet(false);
+      if (Math.random() < 0.4) snd.shoot();
+    }
     // Quiz trigger
     if (time - lastQuizTime >= 15) {
       state = 'quiz';
@@ -534,21 +604,42 @@ function loop(ts) {
     quizCountdown -= dt;
     if (quizCountdown <= 0 && !quizAnswered) {
       quizAnswered = true;
-      showMsg('시간 초과! 💥 총알 50개!', '#ff4444');
+      resultCorrect = false;
       penaltyPending = true;
-      setTimeout(() => {
-        state = 'play';
-        lastQuizTime = time;
-        if (penaltyPending) { spawnPenalty(); penaltyPending = false; }
-      }, 900);
+      snd.wrong();
+      resultTimer = 1.8;
+      state = 'result';
     }
   }
 
-  // Update + draw bullets
+  // result: show effect, then transition to countdown
+  if (state === 'result') {
+    resultTimer -= dt;
+    if (resultTimer <= 0) {
+      if (penaltyPending) { spawnPenalty(); snd.penalty(); penaltyPending = false; }
+      countdownTimer = 3;
+      lastQuizTime = time;
+      state = 'countdown';
+    }
+  }
+
+  // countdown: bullets move, no collision; transition to play at 0
+  if (state === 'countdown') {
+    const prevCeil = Math.ceil(countdownTimer);
+    countdownTimer -= dt;
+    const newCeil = Math.ceil(countdownTimer);
+    if (newCeil < prevCeil && newCeil > 0) snd.countdown(newCeil);
+    if (countdownTimer <= 0) { state = 'play'; snd.countdown(1); }
+  }
+
+  // Update + draw bullets (move during play and countdown, freeze during result/quiz)
+  const moveBullets = (state === 'play' || state === 'countdown');
   for (let i = bullets.length-1; i >= 0; i--) {
     const b = bullets[i];
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
+    if (moveBullets) {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+    }
     if (b.x < -20 || b.x > W+20 || b.y < -20 || b.y > H+20) {
       bullets.splice(i, 1);
       continue;
@@ -562,9 +653,10 @@ function loop(ts) {
   drawShip(ship.x, ship.y, hitFlash > 0);
   if (hitFlash > 0) hitFlash--;
   drawHUD();
-  drawMsg();
 
   if (state === 'quiz') drawQuizOverlay();
+  if (state === 'result') drawResultOverlay();
+  if (state === 'countdown') drawCountdownOverlay();
 }
 
 // === INPUT ===
@@ -578,17 +670,17 @@ function startGame() {
   lastQuizTime = 0;
   quizAnswered = false;
   penaltyPending = false;
-  msgAlpha = 0;
+  resultTimer = 0;
+  countdownTimer = 0;
 }
 
 document.addEventListener('keydown', e => {
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
   if (state === 'start' || state === 'dead') { startGame(); return; }
   if (state === 'quiz') {
     if (e.key === '1') answerQuiz(true);
     if (e.key === '2') answerQuiz(false);
   }
-  // Prevent page scroll on arrow keys
-  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
 });
 
 canvas.addEventListener('click', e => {
