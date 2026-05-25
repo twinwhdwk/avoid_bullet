@@ -6,7 +6,7 @@
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#000; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden; }
-canvas { display:block; cursor:none; }
+canvas { display:block; }
 </style>
 </head>
 <body>
@@ -178,9 +178,15 @@ const quizData = [
   {q:"심장은 근육으로 이루어져 있다",a:true},
 ];
 
+// === KEYBOARD STATE ===
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+const SHIP_SPEED = 220; // px/s
+
 // === GAME STATE ===
 let state = 'start'; // start, play, quiz, dead
-let ship = { x: W/2, y: H/2, tx: W/2, ty: H/2 };
+let ship = { x: W/2, y: H/2 };
 let bullets = [];
 let stars = [];
 let time = 0; // survival seconds
@@ -434,7 +440,7 @@ function drawStart() {
   ctx.fillStyle = '#aaddff';
   ctx.font = '17px "맑은 고딕", sans-serif';
   const lines = [
-    '마우스로 비행기를 조종해 총알을 피하세요!',
+    '방향키 (↑↓←→) 또는 WASD로 비행기를 조종하세요!',
     '15초마다 상식문제가 출제됩니다.',
     '틀리면 총알 50개가 날아옵니다!',
     '목숨 ♥♥♥ — 총알에 맞으면 목숨을 잃습니다.',
@@ -499,10 +505,17 @@ function loop(ts) {
   if (state === 'start') { drawStart(); return; }
   if (state === 'dead') { drawDead(); drawParticles(); return; }
 
-  // Ship movement (smooth follow)
-  const lerpSpeed = 8;
-  ship.x += (ship.tx - ship.x) * lerpSpeed * dt;
-  ship.y += (ship.ty - ship.y) * lerpSpeed * dt;
+  // Ship movement (keyboard)
+  if (state === 'play') {
+    let dx = 0, dy = 0;
+    if (keys['ArrowLeft']  || keys['a'] || keys['A']) dx -= 1;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) dx += 1;
+    if (keys['ArrowUp']    || keys['w'] || keys['W']) dy -= 1;
+    if (keys['ArrowDown']  || keys['s'] || keys['S']) dy += 1;
+    if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+    ship.x = Math.max(20, Math.min(W-20, ship.x + dx * SHIP_SPEED * dt));
+    ship.y = Math.max(20, Math.min(H-20, ship.y + dy * SHIP_SPEED * dt));
+  }
 
   if (state === 'play') {
     time += dt;
@@ -555,16 +568,9 @@ function loop(ts) {
 }
 
 // === INPUT ===
-canvas.addEventListener('mousemove', e => {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = W / rect.width, scaleY = H / rect.height;
-  ship.tx = (e.clientX - rect.left) * scaleX;
-  ship.ty = (e.clientY - rect.top) * scaleY;
-});
-
 function startGame() {
   state = 'play';
-  ship = { x: W/2, y: H/2, tx: W/2, ty: H/2 };
+  ship = { x: W/2, y: H/2 };
   bullets = [];
   particles = [];
   time = 0;
@@ -581,6 +587,8 @@ document.addEventListener('keydown', e => {
     if (e.key === '1') answerQuiz(true);
     if (e.key === '2') answerQuiz(false);
   }
+  // Prevent page scroll on arrow keys
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
 });
 
 canvas.addEventListener('click', e => {
@@ -597,14 +605,6 @@ canvas.addEventListener('click', e => {
   }
 });
 
-// Touch support
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = W / rect.width, scaleY = H / rect.height;
-  ship.tx = (e.touches[0].clientX - rect.left) * scaleX;
-  ship.ty = (e.touches[0].clientY - rect.top) * scaleY;
-}, { passive: false });
 
 requestAnimationFrame(loop);
 </script>
