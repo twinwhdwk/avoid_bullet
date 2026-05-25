@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>총알 피하기</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#000; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden; }
+canvas { display:block; cursor:none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width = 800;
+const H = canvas.height = 600;
+
+// === QUIZ DATA (200 O/X questions, 5th grade level) ===
+const quizData = [
+  // 과학
+  {q:"지구는 태양 주위를 돈다",a:true},
+  {q:"달에는 공기가 없다",a:true},
+  {q:"빛의 속도는 소리보다 빠르다",a:true},
+  {q:"산소는 불을 끄는 역할을 한다",a:false},
+  {q:"식물은 광합성으로 이산화탄소를 흡수한다",a:true},
+  {q:"심장은 오른쪽 가슴에 있다",a:false},
+  {q:"물은 100도에서 끓는다",a:true},
+  {q:"번개가 친 후 천둥이 들린다",a:true},
+  {q:"혈액형은 A, B, O, AB 네 가지뿐이다",a:false},
+  {q:"태양계에서 가장 큰 행성은 목성이다",a:true},
+  {q:"개미는 자기 몸무게의 50배를 들 수 있다",a:true},
+  {q:"뱀은 네 개의 다리가 있다",a:false},
+  {q:"인체에서 가장 큰 기관은 간이다",a:false},
+  {q:"인체에서 가장 큰 기관은 피부이다",a:true},
+  {q:"소금물은 순수한 물보다 높은 온도에서 끓는다",a:true},
+  {q:"철은 물보다 밀도가 높다",a:true},
+  {q:"지구의 자전 주기는 약 24시간이다",a:true},
+  {q:"태양은 행성이다",a:false},
+  {q:"달은 스스로 빛을 낸다",a:false},
+  {q:"화성은 붉은색이다",a:true},
+  {q:"인간의 뼈는 모두 206개이다",a:true},
+  {q:"눈의 망막은 빛을 감지한다",a:true},
+  {q:"소나기는 긴 시간 동안 내리는 비다",a:false},
+  {q:"흰색 빛은 여러 색의 빛이 합쳐진 것이다",a:true},
+  {q:"전자기파는 진공에서도 전달된다",a:true},
+  {q:"대기압은 고도가 높아질수록 낮아진다",a:true},
+  {q:"산은 pH가 7보다 높다",a:false},
+  {q:"염산은 산성이다",a:true},
+  {q:"수소는 가장 가벼운 원소다",a:true},
+  {q:"지구의 자전 방향은 서에서 동이다",a:true},
+  // 한국사
+  {q:"세종대왕은 조선의 왕이다",a:true},
+  {q:"한글은 세종대왕이 만들었다",a:true},
+  {q:"거북선은 이순신 장군이 만들었다",a:true},
+  {q:"3·1 운동은 1919년에 일어났다",a:true},
+  {q:"고조선의 첫 왕은 단군이다",a:true},
+  {q:"임진왜란은 중국이 침략한 전쟁이다",a:false},
+  {q:"조선을 세운 사람은 이성계이다",a:true},
+  {q:"광복절은 8월 15일이다",a:true},
+  {q:"신라는 삼국 중 가장 먼저 세워졌다",a:true},
+  {q:"고려의 수도는 개성이다",a:true},
+  {q:"훈민정음은 28자로 만들어졌다",a:true},
+  {q:"조선의 마지막 왕은 고종이다",a:false},
+  {q:"6·25 전쟁은 1950년에 시작되었다",a:true},
+  {q:"장영실은 측우기를 발명했다",a:true},
+  {q:"백제의 수도는 한성(서울)이었다",a:true},
+  {q:"고구려는 한반도 남쪽에 있었다",a:false},
+  {q:"신사임당은 5만원권 지폐에 있다",a:true},
+  {q:"이순신 장군은 한산도 대첩에서 승리했다",a:true},
+  {q:"대한민국 초대 대통령은 이승만이다",a:true},
+  {q:"삼국시대에는 고구려, 백제, 신라가 있었다",a:true},
+  // 수학
+  {q:"소수(Prime)는 1과 자기 자신으로만 나눠진다",a:true},
+  {q:"1은 소수다",a:false},
+  {q:"직각삼각형의 내각의 합은 180도다",a:true},
+  {q:"원주율 π는 약 3.14다",a:true},
+  {q:"정사각형의 네 각은 모두 90도다",a:true},
+  {q:"삼각형의 세 각의 합은 항상 180도다",a:true},
+  {q:"음수와 음수를 곱하면 양수가 된다",a:true},
+  {q:"분수 1/2과 2/4는 같은 값이다",a:true},
+  {q:"가장 작은 소수는 2다",a:true},
+  {q:"100의 약수는 총 9개다",a:true},
+  {q:"직육면체의 꼭짓점은 8개다",a:true},
+  {q:"원의 지름은 반지름의 2배다",a:true},
+  {q:"10의 배수는 항상 짝수다",a:true},
+  {q:"0은 짝수다",a:true},
+  {q:"정육면체의 면은 6개다",a:true},
+  {q:"넓이의 단위로 cm²를 쓴다",a:true},
+  {q:"사각형의 내각의 합은 360도다",a:true},
+  {q:"2의 10제곱은 1024다",a:true},
+  {q:"소수점 이하 첫째 자리를 십분의 일 자리라 한다",a:true},
+  {q:"평행한 두 선은 만나지 않는다",a:true},
+  // 지리
+  {q:"한국의 수도는 서울이다",a:true},
+  {q:"일본은 섬나라다",a:true},
+  {q:"나일강은 세계에서 가장 긴 강이다",a:true},
+  {q:"에베레스트산은 아시아에 있다",a:true},
+  {q:"아마존강은 아프리카에 있다",a:false},
+  {q:"오스트레일리아는 남반구에 있다",a:true},
+  {q:"사하라 사막은 아프리카에 있다",a:true},
+  {q:"캐나다는 미국 남쪽에 있다",a:false},
+  {q:"한반도는 삼면이 바다로 둘러싸여 있다",a:true},
+  {q:"태평양은 세계에서 가장 큰 바다다",a:true},
+  {q:"북극에는 북극곰이 살고 남극에는 펭귄이 산다",a:true},
+  {q:"브라질은 아시아에 있다",a:false},
+  {q:"제주도는 화산섬이다",a:true},
+  {q:"독도는 대한민국 영토이다",a:true},
+  {q:"중국은 세계에서 인구가 가장 많다",a:false},
+  {q:"러시아는 세계에서 가장 넓은 나라다",a:true},
+  {q:"지구의 70%는 물로 덮여있다",a:true},
+  {q:"한국은 동아시아에 위치한다",a:true},
+  {q:"영국은 유럽에 있다",a:true},
+  {q:"피라미드는 이집트에 있다",a:true},
+  // 국어/언어
+  {q:"'아름답다'는 형용사다",a:true},
+  {q:"주어는 문장에서 동작이나 상태의 주체다",a:true},
+  {q:"'빠르게'는 부사다",a:true},
+  {q:"감탄사는 감정을 나타내는 말이다",a:true},
+  {q:"'하다'는 동사다",a:true},
+  {q:"'큰'은 동사다",a:false},
+  {q:"'학교에서'의 '에서'는 조사다",a:true},
+  {q:"'먹는다'의 기본형은 '먹다'다",a:true},
+  {q:"시는 산문 형식으로 쓴다",a:false},
+  {q:"일기는 매일 쓰는 개인 기록이다",a:true},
+  {q:"의성어는 소리를 흉내 낸 말이다",a:true},
+  {q:"'철수가 달린다'에서 철수는 주어다",a:true},
+  {q:"높임말에서 '드시다'는 '먹다'의 높임이다",a:true},
+  {q:"모음은 자음 없이 발음될 수 있다",a:true},
+  {q:"한글 자음은 14개다",a:true},
+  {q:"한글 모음은 10개다",a:true},
+  {q:"받침이 없는 글자도 있다",a:true},
+  {q:"'나는'의 '는'은 격조사다",a:false},
+  {q:"반의어란 뜻이 반대인 두 단어다",a:true},
+  {q:"비유란 어떤 것을 다른 것에 빗대어 표현하는 방법이다",a:true},
+  // 사회/상식
+  {q:"민주주의에서는 국민이 주권을 가진다",a:true},
+  {q:"대한민국 국회는 단원제다",a:false},
+  {q:"유엔(UN)은 세계 평화를 위한 국제기구다",a:true},
+  {q:"재활용은 환경 보호에 도움이 된다",a:true},
+  {q:"오존층은 자외선을 차단한다",a:true},
+  {q:"지구온난화는 온실가스가 원인이다",a:true},
+  {q:"어린이날은 5월 5일이다",a:true},
+  {q:"대한민국의 국기는 태극기다",a:true},
+  {q:"대한민국의 국가는 애국가다",a:true},
+  {q:"올림픽은 4년마다 열린다",a:true},
+  {q:"월드컵 축구는 2년마다 열린다",a:false},
+  {q:"국회의원의 임기는 4년이다",a:true},
+  {q:"대통령 임기는 5년이다",a:true},
+  {q:"세금은 국가를 운영하는 데 쓰인다",a:true},
+  {q:"환경오염은 생태계를 파괴한다",a:true},
+  {q:"사막화는 숲이 사막으로 변하는 현상이다",a:true},
+  {q:"남자와 여자는 법 앞에 평등하다",a:true},
+  {q:"인터넷은 1990년대 이전에 발명되었다",a:false},
+  {q:"스마트폰은 전화와 컴퓨터 기능을 합친 것이다",a:true},
+  {q:"저작권은 창작물을 만든 사람의 권리다",a:true},
+  // 추가 과학
+  {q:"빛은 물보다 공기 중에서 더 빠르다",a:true},
+  {q:"태양은 가스로 이루어져 있다",a:true},
+  {q:"지구에서 달까지의 거리는 약 38만 km다",a:true},
+  {q:"소리는 진공에서 전달되지 않는다",a:true},
+  {q:"물의 화학식은 H2O다",a:true},
+  {q:"금속은 전기를 잘 통한다",a:true},
+  {q:"고무는 전기를 잘 통한다",a:false},
+  {q:"자석은 같은 극끼리 밀어낸다",a:true},
+  {q:"지구의 내부는 액체 상태의 맨틀이 있다",a:true},
+  {q:"화산 폭발 시 용암이 나온다",a:true},
+  {q:"지진은 지구 내부의 에너지 방출로 발생한다",a:true},
+  {q:"대기 중 산소의 비율은 약 78%다",a:false},
+  {q:"광합성의 결과로 산소가 발생한다",a:true},
+  {q:"식물의 잎에 엽록소가 있다",a:true},
+  {q:"곰팡이는 식물이다",a:false},
+  {q:"바이러스는 살아있는 세포에서만 증식한다",a:true},
+  {q:"체온은 약 36.5도다",a:true},
+  {q:"혈액은 산소를 운반한다",a:true},
+  {q:"뇌는 중추신경계의 일부다",a:true},
+  {q:"심장은 근육으로 이루어져 있다",a:true},
+];
+
+// === GAME STATE ===
+let state = 'start'; // start, play, quiz, dead
+let ship = { x: W/2, y: H/2, tx: W/2, ty: H/2 };
+let bullets = [];
+let stars = [];
+let time = 0; // survival seconds
+let bestTime = parseFloat(localStorage.getItem('bulletBest') || '0');
+let lives = 3;
+let quizTimer = 15;
+let quizQuestion = null;
+let quizCountdown = 10;
+let quizAnswered = false;
+let lastQuizTime = 0;
+let spawnRate = 0.03; // bullets per frame
+let baseSpeed = 76; // px/s
+let frameTime = 0;
+let lastTime = 0;
+let particles = [];
+let penaltyPending = false;
+
+// Init stars
+for (let i = 0; i < 180; i++) {
+  stars.push({ x: Math.random()*W, y: Math.random()*H, r: Math.random()*1.5+0.3, b: Math.random() });
+}
+
+// === DRAW HELPERS ===
+function drawStars() {
+  stars.forEach(s => {
+    ctx.fillStyle = `rgba(255,255,255,${0.4 + s.b * 0.6})`;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    ctx.fill();
+  });
+}
+
+function drawShip(x, y, hit) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (hit) ctx.globalAlpha = 0.5 + Math.sin(Date.now()/50)*0.5;
+  // Body
+  ctx.fillStyle = '#88ccff';
+  ctx.beginPath();
+  ctx.moveTo(0, -20);
+  ctx.lineTo(13, 10);
+  ctx.lineTo(0, 5);
+  ctx.lineTo(-13, 10);
+  ctx.closePath();
+  ctx.fill();
+  // Cockpit
+  ctx.fillStyle = '#00eeff';
+  ctx.beginPath();
+  ctx.ellipse(0, -5, 5, 8, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Wings glow
+  ctx.fillStyle = '#ff6633';
+  ctx.beginPath();
+  ctx.moveTo(-13, 10);
+  ctx.lineTo(-18, 14);
+  ctx.lineTo(-8, 14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(13, 10);
+  ctx.lineTo(18, 14);
+  ctx.lineTo(8, 14);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBullet(b) {
+  ctx.save();
+  ctx.fillStyle = b.penalty ? '#ff2222' : '#ffee00';
+  ctx.shadowColor = b.penalty ? '#ff0000' : '#ffaa00';
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, b.penalty ? 5 : 4, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHUD() {
+  // Time
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px monospace';
+  ctx.textAlign = 'center';
+  const t = time.toFixed(1);
+  ctx.fillText(`⏱ ${t}s`, W/2, 36);
+  // Lives
+  ctx.font = '22px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('♥'.repeat(lives) + '♡'.repeat(Math.max(0,3-lives)), 14, 34);
+  // Best
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText(`최고: ${bestTime.toFixed(1)}s`, W-14, 34);
+  // Quiz timer bar
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(0, H-6, W, 6);
+  const ratio = Math.max(0, (15 - (time - lastQuizTime)) / 15);
+  ctx.fillStyle = ratio > 0.4 ? '#00ff88' : '#ff4444';
+  ctx.fillRect(0, H-6, W * ratio, 6);
+}
+
+function drawParticles() {
+  particles = particles.filter(p => p.life > 0);
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life / p.maxLife;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life--;
+  });
+}
+
+function spawnExplosion(x, y, color) {
+  for (let i = 0; i < 18; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = Math.random() * 3 + 1;
+    particles.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, r: Math.random()*3+1, life: 30, maxLife: 30, color });
+  }
+}
+
+// === BULLET SYSTEM ===
+function spawnBullet(penalty) {
+  const side = Math.floor(Math.random() * 4);
+  let x, y, vx, vy;
+  // Target near center with random spread
+  const tx = W/2 + (Math.random()-0.5)*200;
+  const ty = H/2 + (Math.random()-0.5)*200;
+  if (side === 0) { x = Math.random()*W; y = -8; }
+  else if (side === 1) { x = W+8; y = Math.random()*H; }
+  else if (side === 2) { x = Math.random()*W; y = H+8; }
+  else { x = -8; y = Math.random()*H; }
+  const dx = tx - x, dy = ty - y;
+  const dist = Math.sqrt(dx*dx + dy*dy) || 1;
+  const spd = (baseSpeed + time*3) * (penalty ? 1.5 : 1);
+  vx = dx/dist * spd;
+  vy = dy/dist * spd;
+  bullets.push({ x, y, vx, vy, penalty: !!penalty });
+}
+
+function spawnPenalty() {
+  for (let i = 0; i < 50; i++) spawnBullet(true);
+}
+
+// === QUIZ ===
+function pickQuiz() {
+  const idx = Math.floor(Math.random() * quizData.length);
+  quizQuestion = quizData[idx];
+  quizCountdown = 10;
+  quizAnswered = false;
+}
+
+function drawQuizOverlay() {
+  ctx.fillStyle = 'rgba(0,0,20,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffee00';
+  ctx.font = 'bold 20px "맑은 고딕", sans-serif';
+  ctx.fillText('📚 상식 문제', W/2, H/2 - 90);
+
+  ctx.fillStyle = '#fff';
+  ctx.font = '18px "맑은 고딕", sans-serif';
+  // Word wrap
+  const words = quizQuestion.q.split('');
+  let line = '', lines = [];
+  words.forEach(ch => {
+    line += ch;
+    if (line.length >= 24) { lines.push(line); line = ''; }
+  });
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx.fillText(l, W/2, H/2 - 50 + i*28));
+
+  // Buttons
+  ctx.fillStyle = '#00cc66';
+  ctx.beginPath();
+  ctx.roundRect(W/2 - 130, H/2 + 20, 110, 54, 12);
+  ctx.fill();
+  ctx.fillStyle = '#cc2222';
+  ctx.beginPath();
+  ctx.roundRect(W/2 + 20, H/2 + 20, 110, 54, 12);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('O', W/2 - 75, H/2 + 56);
+  ctx.fillText('X', W/2 + 75, H/2 + 56);
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#aaa';
+  ctx.fillText('[1] = O      [2] = X', W/2, H/2 + 92);
+
+  // Countdown bar
+  const ratio = quizCountdown / 10;
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
+  ctx.fillRect(W/2 - 150, H/2 + 108, 300, 10);
+  ctx.fillStyle = ratio > 0.4 ? '#00ffaa' : '#ff4444';
+  ctx.fillRect(W/2 - 150, H/2 + 108, 300 * ratio, 10);
+  ctx.fillStyle = '#fff';
+  ctx.font = '13px monospace';
+  ctx.fillText(`${quizCountdown.toFixed(1)}초`, W/2, H/2 + 133);
+}
+
+function answerQuiz(ans) {
+  if (quizAnswered) return;
+  quizAnswered = true;
+  if (ans === quizQuestion.a) {
+    // Correct
+    showMsg('정답! ✨', '#00ff88');
+  } else {
+    // Wrong — 50 penalty bullets
+    showMsg('틀렸다! 💥 총알 50개!', '#ff4444');
+    penaltyPending = true;
+  }
+  setTimeout(() => {
+    state = 'play';
+    lastQuizTime = time;
+    if (penaltyPending) { spawnPenalty(); penaltyPending = false; }
+  }, 900);
+}
+
+let msgText = '', msgColor = '#fff', msgAlpha = 0;
+function showMsg(t, c) { msgText = t; msgColor = c; msgAlpha = 1.5; }
+
+function drawMsg() {
+  if (msgAlpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, msgAlpha);
+  ctx.fillStyle = msgColor;
+  ctx.font = 'bold 30px "맑은 고딕", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(msgText, W/2, H/2 - 120);
+  ctx.restore();
+  msgAlpha -= 0.03;
+}
+
+// === SCREENS ===
+function drawStart() {
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00eeff';
+  ctx.font = 'bold 42px "맑은 고딕", monospace';
+  ctx.fillText('🚀 총알 피하기', W/2, 160);
+
+  ctx.fillStyle = '#aaddff';
+  ctx.font = '17px "맑은 고딕", sans-serif';
+  const lines = [
+    '마우스로 비행기를 조종해 총알을 피하세요!',
+    '15초마다 상식문제가 출제됩니다.',
+    '틀리면 총알 50개가 날아옵니다!',
+    '목숨 ♥♥♥ — 총알에 맞으면 목숨을 잃습니다.',
+    '',
+    `최고 기록: ${bestTime.toFixed(1)}초`,
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W/2, 230 + i*30));
+
+  ctx.fillStyle = '#ffee00';
+  ctx.font = 'bold 22px "맑은 고딕", sans-serif';
+  ctx.fillText('클릭 또는 아무 키나 눌러 시작', W/2, 440);
+}
+
+function drawDead() {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 44px "맑은 고딕", monospace';
+  ctx.fillText('💥 GAME OVER', W/2, H/2 - 80);
+  ctx.fillStyle = '#fff';
+  ctx.font = '24px monospace';
+  ctx.fillText(`생존 시간: ${time.toFixed(1)}초`, W/2, H/2 - 20);
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText(`최고 기록: ${bestTime.toFixed(1)}초`, W/2, H/2 + 20);
+  ctx.fillStyle = '#88ff88';
+  ctx.font = '18px "맑은 고딕", sans-serif';
+  ctx.fillText('클릭 또는 아무 키나 눌러 재시작', W/2, H/2 + 80);
+}
+
+// === COLLISION ===
+function checkHit() {
+  const r = 10;
+  for (let i = bullets.length-1; i >= 0; i--) {
+    const b = bullets[i];
+    const dx = b.x - ship.x, dy = b.y - ship.y;
+    if (dx*dx + dy*dy < r*r) {
+      spawnExplosion(b.x, b.y, b.penalty ? '#ff4444' : '#ffaa00');
+      bullets.splice(i, 1);
+      lives--;
+      if (lives <= 0) {
+        if (time > bestTime) { bestTime = time; localStorage.setItem('bulletBest', bestTime); }
+        state = 'dead';
+        spawnExplosion(ship.x, ship.y, '#ff8800');
+      }
+      return;
+    }
+  }
+}
+
+// === MAIN LOOP ===
+let hitFlash = 0;
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  ctx.fillStyle = '#000010';
+  ctx.fillRect(0, 0, W, H);
+  drawStars();
+
+  if (state === 'start') { drawStart(); return; }
+  if (state === 'dead') { drawDead(); drawParticles(); return; }
+
+  // Ship movement (smooth follow)
+  const lerpSpeed = 8;
+  ship.x += (ship.tx - ship.x) * lerpSpeed * dt;
+  ship.y += (ship.ty - ship.y) * lerpSpeed * dt;
+
+  if (state === 'play') {
+    time += dt;
+    // Spawn bullets
+    const rate = spawnRate + time * 0.0008;
+    if (Math.random() < rate * 60 * dt) spawnBullet(false);
+
+    // Quiz trigger
+    if (time - lastQuizTime >= 15) {
+      state = 'quiz';
+      pickQuiz();
+    }
+  }
+
+  if (state === 'quiz') {
+    quizCountdown -= dt;
+    if (quizCountdown <= 0 && !quizAnswered) {
+      quizAnswered = true;
+      showMsg('시간 초과! 💥 총알 50개!', '#ff4444');
+      penaltyPending = true;
+      setTimeout(() => {
+        state = 'play';
+        lastQuizTime = time;
+        if (penaltyPending) { spawnPenalty(); penaltyPending = false; }
+      }, 900);
+    }
+  }
+
+  // Update + draw bullets
+  for (let i = bullets.length-1; i >= 0; i--) {
+    const b = bullets[i];
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    if (b.x < -20 || b.x > W+20 || b.y < -20 || b.y > H+20) {
+      bullets.splice(i, 1);
+      continue;
+    }
+    drawBullet(b);
+  }
+
+  if (state === 'play') checkHit();
+
+  drawParticles();
+  drawShip(ship.x, ship.y, hitFlash > 0);
+  if (hitFlash > 0) hitFlash--;
+  drawHUD();
+  drawMsg();
+
+  if (state === 'quiz') drawQuizOverlay();
+}
+
+// === INPUT ===
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width, scaleY = H / rect.height;
+  ship.tx = (e.clientX - rect.left) * scaleX;
+  ship.ty = (e.clientY - rect.top) * scaleY;
+});
+
+function startGame() {
+  state = 'play';
+  ship = { x: W/2, y: H/2, tx: W/2, ty: H/2 };
+  bullets = [];
+  particles = [];
+  time = 0;
+  lives = 3;
+  lastQuizTime = 0;
+  quizAnswered = false;
+  penaltyPending = false;
+  msgAlpha = 0;
+}
+
+document.addEventListener('keydown', e => {
+  if (state === 'start' || state === 'dead') { startGame(); return; }
+  if (state === 'quiz') {
+    if (e.key === '1') answerQuiz(true);
+    if (e.key === '2') answerQuiz(false);
+  }
+});
+
+canvas.addEventListener('click', e => {
+  if (state === 'start' || state === 'dead') { startGame(); return; }
+  if (state === 'quiz') {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = W / rect.width, scaleY = H / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+    // O button
+    if (mx >= W/2-130 && mx <= W/2-20 && my >= H/2+20 && my <= H/2+74) answerQuiz(true);
+    // X button
+    if (mx >= W/2+20 && mx <= W/2+130 && my >= H/2+20 && my <= H/2+74) answerQuiz(false);
+  }
+});
+
+// Touch support
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width, scaleY = H / rect.height;
+  ship.tx = (e.touches[0].clientX - rect.left) * scaleX;
+  ship.ty = (e.touches[0].clientY - rect.top) * scaleY;
+}, { passive: false });
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
