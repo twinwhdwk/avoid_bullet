@@ -203,6 +203,11 @@ const snd = {
   newRecord() {
     [523,659,784,880,1047,1319].forEach((f,i) => setTimeout(()=>playTone(f,'sine',0.3,0.25,null,true), i*100));
   },
+  bomb() {
+    playNoise(0.35, 0.4, 1800);
+    [300,200,130].forEach((f,i) => setTimeout(()=>playTone(f,'sawtooth',0.3,0.28), i*90));
+    setTimeout(()=>playTone(523,'sine',0.4,0.22,null,true), 220);
+  },
   shield() {
     [440,550,660,880].forEach((f,i) => setTimeout(()=>playTone(f,'sine',0.18,0.22,null,true), i*60));
   },
@@ -287,6 +292,8 @@ let muted = false;
 let leaderboard = JSON.parse(localStorage.getItem('bulletLeaderboard') || '[]');
 let powerups = [];
 let lastPowerupTime = -20;
+let lastWave = 1;
+let waveAnnounce = 0;
 
 // Parallax star layers
 function initStars() {
@@ -560,7 +567,8 @@ function spawnConfetti(cx, cy) {
 
 // === POWERUP SYSTEM ===
 function spawnPowerup() {
-  powerups.push({ x:80+Math.random()*(W-160), y:80+Math.random()*(H-160), type:'shield', timer:9, pulse:0 });
+  const type = Math.random() < 0.32 ? 'bomb' : 'shield';
+  powerups.push({ x:80+Math.random()*(W-160), y:80+Math.random()*(H-160), type, timer:9, pulse:0 });
 }
 
 function drawPowerups(dt) {
@@ -569,20 +577,22 @@ function drawPowerups(dt) {
     p.timer -= dt;
     p.pulse += dt * 4;
     const a = Math.min(1, p.timer * 0.6);
+    const isBomb = p.type === 'bomb';
+    const col = isBomb ? '#ffee00' : '#00ffff';
+    const bgCol = isBomb ? 'rgba(255,220,0,0.2)' : 'rgba(0,200,255,0.25)';
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.strokeStyle = '#00ffff';
-    ctx.lineWidth = 2;
-    ctx.shadowColor = '#00ffff';
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.shadowColor = col;
     ctx.shadowBlur = 10 + 5*Math.sin(p.pulse);
     ctx.beginPath(); ctx.arc(p.x, p.y, 14+3*Math.sin(p.pulse), 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = 'rgba(0,200,255,0.25)';
+    ctx.fillStyle = bgCol;
     ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#00ffff';
+    ctx.fillStyle = col;
     ctx.font = '15px monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.shadowBlur = 8;
-    ctx.fillText('🛡', p.x, p.y);
+    ctx.fillText(isBomb ? '💥' : '🛡', p.x, p.y);
     ctx.restore();
   });
 }
@@ -593,10 +603,20 @@ function checkPowerupCollect() {
     const dx = p.x-ship.x, dy = p.y-ship.y;
     if (dx*dx+dy*dy < 22*22) {
       powerups.splice(i, 1);
-      invincible = 3;
-      snd.shield();
-      spawnExplosion(ship.x, ship.y, '#00ffff', 16);
-      streakMsg = '🛡 보호막 획득!'; streakAlpha = 2.2;
+      if (p.type === 'bomb') {
+        const cnt = bullets.length;
+        bullets.forEach(b => spawnExplosion(b.x, b.y, b.penalty?'#ff4444':'#ffaa00', 6));
+        bullets = [];
+        snd.bomb();
+        spawnExplosion(ship.x, ship.y, '#ffee00', 28);
+        screenShake = 16;
+        streakMsg = `💥 ${cnt}개 폭발!`; streakAlpha = 2.5;
+      } else {
+        invincible = 3;
+        snd.shield();
+        spawnExplosion(ship.x, ship.y, '#00ffff', 16);
+        streakMsg = '🛡 보호막 획득!'; streakAlpha = 2.2;
+      }
     }
   }
 }
@@ -799,7 +819,7 @@ function drawStart(dt) {
     '15초마다 상식 O/X 문제가 출제됩니다.',
     '틀리면 총알 50개가 한꺼번에 날아옵니다!',
     '목숨 ♥♥♥  —  총알에 맞으면 목숨을 잃습니다.',
-    '🛡 방패 아이템: 30초마다 등장, 먹으면 3초 무적!',
+    '🛡 방패: 3초 무적  💥 폭탄: 화면 총알 전부 제거  (30초마다 출현)',
     '5연속 정답 시 목숨 1개 회복  |  ESC/P: 정지  |  M: 음소거',
   ];
   lines.forEach((l,i) => ctx.fillText(l, W/2, 222+i*30));
@@ -944,6 +964,18 @@ function loop(ts) {
   drawBG();
   drawStars(state==='start'||state==='dead' ? dt : dt);
 
+  // Wave colour tint (increases with wave number)
+  if (state==='play'||state==='quiz'||state==='result'||state==='countdown') {
+    const wv = 1+Math.floor(time/15);
+    if (wv >= 4) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.12, (wv-3)*0.025);
+      ctx.fillStyle = wv >= 7 ? '#ff1100' : '#ff6600';
+      ctx.fillRect(0,0,W,H);
+      ctx.restore();
+    }
+  }
+
   if (state==='start') { drawStart(dt); ctx.restore(); return; }
   if (state==='dead')  { drawDead();    drawParticles(); ctx.restore(); return; }
   if (paused) {
@@ -979,6 +1011,9 @@ function loop(ts) {
     }
     if (time-lastQuizTime>=15) { state='quiz'; pickQuiz(); }
     if (time-lastPowerupTime>=30 && powerups.length===0) { spawnPowerup(); lastPowerupTime=time; }
+    const curWave = 1+Math.floor(time/15);
+    if (curWave > lastWave) { lastWave=curWave; waveAnnounce=1.6; }
+    if (waveAnnounce>0) waveAnnounce-=dt;
   }
 
   if (state==='quiz') {
@@ -1049,6 +1084,19 @@ function loop(ts) {
     ctx.restore();
   }
 
+  // Wave announcement flash
+  if (waveAnnounce > 0 && lastWave > 1) {
+    const a = Math.min(1, waveAnnounce * 1.2);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = '#aaddff'; ctx.shadowBlur = 30;
+    ctx.fillStyle = '#aaddff';
+    ctx.font = `bold ${Math.floor(36 + (1-a)*10)}px "맑은 고딕", sans-serif`;
+    ctx.fillText(`WAVE ${lastWave}`, W/2, H*0.72);
+    ctx.restore();
+  }
+
   drawHUD();
 
   if(state==='quiz')      drawQuizOverlay();
@@ -1068,7 +1116,7 @@ function startGame() {
   resultTimer=0; countdownTimer=0;
   hitFlash=0; screenShake=0; isNewRecord=false;
   invincible=0; paused=false; streak=0; streakAlpha=0;
-  powerups=[]; lastPowerupTime=-20;
+  powerups=[]; lastPowerupTime=-20; lastWave=1; waveAnnounce=0;
   startBGM();
 }
 
