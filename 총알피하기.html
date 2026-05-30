@@ -6,11 +6,32 @@
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#000; display:flex; justify-content:center; align-items:center; height:100vh; overflow:hidden; }
-canvas { display:block; }
+canvas { display:block; max-width:100vw; max-height:100vh; }
+
+/* 모바일 가상 조이스틱 */
+#vjoy-zone {
+  display:none; position:fixed; bottom:24px; left:24px;
+  width:110px; height:110px; z-index:200; touch-action:none;
+  -webkit-tap-highlight-color:transparent;
+}
+#vjoy-base {
+  position:absolute; inset:0; border-radius:50%;
+  background:rgba(255,255,255,0.06); border:2px solid rgba(0,200,255,0.28);
+}
+#vjoy-stick {
+  position:absolute; width:44px; height:44px; border-radius:50%;
+  background:rgba(0,180,255,0.42); border:2px solid rgba(0,220,255,0.82);
+  top:33px; left:33px; pointer-events:none;
+  box-shadow:0 0 12px rgba(0,200,255,0.5);
+}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
+<div id="vjoy-zone">
+  <div id="vjoy-base"></div>
+  <div id="vjoy-stick"></div>
+</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -1332,13 +1353,14 @@ function loop(ts) {
     drawPauseScreen(); ctx.restore(); return;
   }
 
-  // Ship keyboard movement
+  // Ship keyboard + joystick movement
   if (state==='play'||state==='countdown') {
     let dx=0, dy=0;
     if(keys['ArrowLeft']||keys['a']||keys['A']) dx-=1;
     if(keys['ArrowRight']||keys['d']||keys['D']) dx+=1;
     if(keys['ArrowUp']||keys['w']||keys['W'])   dy-=1;
     if(keys['ArrowDown']||keys['s']||keys['S'])  dy+=1;
+    if (vjoyActive) { dx += vjoyDx; dy += vjoyDy; }
     const moving = dx!==0||dy!==0;
     if(dx!==0&&dy!==0){dx*=0.707;dy*=0.707;}
     ship.vx=dx*SHIP_SPEED; ship.vy=dy*SHIP_SPEED;
@@ -1379,7 +1401,7 @@ function loop(ts) {
       if (Math.random()<0.4) snd.shoot();
     }
 
-    if (time-lastQuizTime>=15) { state='quiz'; pickQuiz(); }
+    if (time-lastQuizTime>=15) { vjoyReset(); state='quiz'; pickQuiz(); }
     if (time-lastPowerupTime>=30 && powerups.length===0) { spawnPowerup(); lastPowerupTime=time; }
     const curWave = 1+Math.floor(time/15);
     if (curWave > lastWave) { lastWave=curWave; waveAnnounce=1.6; }
@@ -1618,6 +1640,64 @@ canvas.addEventListener('click', e=>{
 });
 
 requestAnimationFrame(loop);
+
+// === 모바일 가상 조이스틱 ===
+let vjoyDx = 0, vjoyDy = 0, vjoyActive = false;
+const vjoyZone = document.getElementById('vjoy-zone');
+const vjoyStick = document.getElementById('vjoy-stick');
+const VJOY_HALF = 55, VSTICK_HALF = 22;
+
+function vjoyReset() {
+  vjoyActive = false; vjoyDx = 0; vjoyDy = 0;
+  if (vjoyStick) {
+    vjoyStick.style.left = (VJOY_HALF - VSTICK_HALF) + 'px';
+    vjoyStick.style.top  = (VJOY_HALF - VSTICK_HALF) + 'px';
+  }
+}
+
+function vjoyUpdateTouch(touch) {
+  const rect = vjoyZone.getBoundingClientRect();
+  const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+  let dx = touch.clientX - cx, dy = touch.clientY - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const maxR = VJOY_HALF - VSTICK_HALF;
+  if (dist > maxR) { const s = maxR / dist; dx *= s; dy *= s; }
+  vjoyDx = dx / maxR; vjoyDy = dy / maxR;
+  vjoyStick.style.left = (VJOY_HALF - VSTICK_HALF + dx) + 'px';
+  vjoyStick.style.top  = (VJOY_HALF - VSTICK_HALF + dy) + 'px';
+}
+
+vjoyZone.addEventListener('touchstart', e => { e.preventDefault(); vjoyActive = true; vjoyUpdateTouch(e.touches[0]); }, {passive:false});
+vjoyZone.addEventListener('touchmove',  e => { e.preventDefault(); if (vjoyActive) vjoyUpdateTouch(e.touches[0]); }, {passive:false});
+vjoyZone.addEventListener('touchend',   e => { e.preventDefault(); vjoyReset(); }, {passive:false});
+vjoyZone.addEventListener('touchcancel',e => { e.preventDefault(); vjoyReset(); }, {passive:false});
+
+// 캔버스 터치: 퀴즈 답변 + 시작/사망 화면
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  if (state === 'start' || state === 'dead') { startGame(); return; }
+  if (state === 'quiz') {
+    const t = e.changedTouches[0];
+    const rect = canvas.getBoundingClientRect();
+    const mx = (t.clientX - rect.left) * W / rect.width;
+    const my = (t.clientY - rect.top) * H / rect.height;
+    if (mx>=W/2-120&&mx<=W/2-20&&my>=H/2-10&&my<=H/2+42) answerQuiz(true);
+    if (mx>=W/2+20&&mx<=W/2+120&&my>=H/2-10&&my<=H/2+42) answerQuiz(false);
+  }
+}, {passive:false});
+
+// 터치 기기 감지 후 조이스틱 표시/숨김 (drawHUD 호출마다 갱신)
+const _isTouchDev = ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+if (_isTouchDev) vjoyZone.style.display = 'block';
+
+function updateVjoyVisibility() {
+  if (!_isTouchDev || !vjoyZone) return;
+  const show = state !== 'start' && state !== 'dead';
+  if (show && vjoyZone.style.display === 'none') vjoyZone.style.display = 'block';
+  else if (!show && vjoyZone.style.display !== 'none') { vjoyZone.style.display = 'none'; vjoyReset(); }
+}
+const __drawHUD = drawHUD;
+drawHUD = function() { __drawHUD(); updateVjoyVisibility(); };
 </script>
 </body>
 </html>
