@@ -399,6 +399,43 @@ document.addEventListener('keydown', e => { keys[e.key] = true; });
 document.addEventListener('keyup', e => { keys[e.key] = false; });
 const SHIP_SPEED = 220;
 
+// === DIFFICULTY SELECTION ===
+let selectedDifficulty = 'normal';
+let diffButtons = [];
+
+function drawDiffButtons(cx, cy) {
+  diffButtons = [];
+  const labels = ['🌱 쉬움', '⚔️ 보통', '🔥 어려움'];
+  const diffs = ['easy', 'normal', 'hard'];
+  const bw = 90, bh = 34, gap = 14;
+  const totalW = labels.length * bw + (labels.length-1) * gap;
+  let bx = cx - totalW/2;
+  labels.forEach((label, i) => {
+    const selected = selectedDifficulty === diffs[i];
+    ctx.save();
+    ctx.fillStyle = selected ? 'rgba(255,180,0,0.25)' : 'rgba(255,255,255,0.08)';
+    ctx.strokeStyle = selected ? '#ffcc00' : '#444488';
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.shadowBlur = selected ? 15 : 0;
+    ctx.shadowColor = '#ffcc00';
+    ctx.beginPath(); ctx.roundRect(bx, cy, bw, bh, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = selected ? '#ffdd00' : '#88aacc';
+    ctx.font = `${selected ? 'bold ' : ''}13px "맑은 고딕", sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowBlur = 0;
+    ctx.fillText(label, bx + bw/2, cy + bh/2);
+    ctx.restore();
+    diffButtons.push({ x: bx, y: cy, w: bw, h: bh, diff: diffs[i] });
+    bx += bw + gap;
+  });
+}
+
+function applyDifficulty() {
+  if (selectedDifficulty === 'easy') { bulletSpeed = 50; bulletSpawnRate = 0.02; }
+  else if (selectedDifficulty === 'hard') { bulletSpeed = 95; bulletSpawnRate = 0.05; }
+  else { bulletSpeed = 70; bulletSpawnRate = 0.03; }
+}
+
 // === GAME STATE ===
 let state = 'start';
 let ship = { x: W/2, y: H/2, vx:0, vy:0 };
@@ -430,6 +467,8 @@ let streakMsg = '';
 let streakAlpha = 0;
 let lifeAnimTimer = 0;   // for life-loss heart animation
 let lifeAnimLost = -1;   // which heart was just lost
+let doubleScore = false;
+let doubleScoreTimer = 0;
 
 // === DIFFICULTY CURVE ===
 let gameTimeSec = 0;          // integer seconds elapsed
@@ -446,8 +485,10 @@ function updateDifficultyEverySecond() {
     const newLevel = Math.min(10, difficultyLevel + 1);
     if (newLevel > difficultyLevel) {
       difficultyLevel = newLevel;
-      bulletSpeed = Math.min(160, 70 + (difficultyLevel - 1) * 10);
-      bulletSpawnRate = Math.min(0.12, 0.03 + (difficultyLevel - 1) * 0.01);
+      const baseSpeed = selectedDifficulty === 'easy' ? 50 : (selectedDifficulty === 'hard' ? 95 : 70);
+      const baseRate  = selectedDifficulty === 'easy' ? 0.02 : (selectedDifficulty === 'hard' ? 0.05 : 0.03);
+      bulletSpeed = Math.min(160, baseSpeed + (difficultyLevel - 1) * 10);
+      bulletSpawnRate = Math.min(0.12, baseRate + (difficultyLevel - 1) * 0.01);
       diffAnnounce = 2.5;
       diffAnnounceMsg = `★ 난이도 ${difficultyLevel}단계! 속도 UP!`;
       snd.diffUp();
@@ -724,6 +765,14 @@ function drawHUD() {
     ctx.fillText(`${streak}연속`, W-10, H-14);
   }
 
+  // Double score indicator
+  if (doubleScore) {
+    ctx.fillStyle = '#ff44ff';
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(`2배! ${doubleScoreTimer.toFixed(1)}s`, 100, H-28);
+  }
+
   // Mute indicator
   ctx.textAlign = 'right';
   ctx.font = '16px monospace';
@@ -806,7 +855,7 @@ function spawnConfetti(cx, cy) {
 
 // === POWERUP SYSTEM ===
 function spawnPowerup() {
-  const type = Math.random() < 0.32 ? 'bomb' : 'shield';
+  const type = Math.random() < 0.28 ? 'bomb' : Math.random() < 0.4 ? 'double' : 'shield';
   powerups.push({ x:80+Math.random()*(W-160), y:80+Math.random()*(H-160), type, timer:9, pulse:0 });
 }
 
@@ -817,8 +866,9 @@ function drawPowerups(dt) {
     p.pulse += dt * 4;
     const a = Math.min(1, p.timer * 0.6);
     const isBomb = p.type === 'bomb';
-    const col = isBomb ? '#ffee00' : '#00ffff';
-    const bgCol = isBomb ? 'rgba(255,220,0,0.2)' : 'rgba(0,200,255,0.25)';
+    const isDouble = p.type === 'double';
+    const col = isBomb ? '#ffee00' : (isDouble ? '#ff44ff' : '#00ffff');
+    const bgCol = isBomb ? 'rgba(255,220,0,0.2)' : (isDouble ? 'rgba(255,50,255,0.2)' : 'rgba(0,200,255,0.25)');
     ctx.save();
     ctx.globalAlpha = a;
     ctx.strokeStyle = col; ctx.lineWidth = 2;
@@ -831,7 +881,7 @@ function drawPowerups(dt) {
     ctx.font = 'bold 13px monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.shadowBlur = 8;
-    ctx.fillText(isBomb ? '폭탄' : '방패', p.x, p.y);
+    ctx.fillText(isBomb ? '폭탄' : (isDouble ? '2배!' : '방패'), p.x, p.y);
     ctx.restore();
   });
 }
@@ -850,6 +900,12 @@ function checkPowerupCollect() {
         spawnExplosion(ship.x, ship.y, '#ffee00', 28);
         screenShake = 16;
         streakMsg = `폭탄! ${cnt}개 제거!`; streakAlpha = 2.5;
+      } else if (p.type === 'double') {
+        doubleScore = true;
+        doubleScoreTimer = 8;
+        snd.lifeUp();
+        spawnExplosion(ship.x, ship.y, '#ff44ff', 16);
+        streakMsg = '2배 점수! 8초간!'; streakAlpha = 2.2;
       } else {
         invincible = 3;
         snd.shield();
@@ -961,19 +1017,23 @@ function drawQuizOverlay() {
   ctx.beginPath(); ctx.roundRect(W/2-230, H/2-150, 460, 300, 18); ctx.fill(); ctx.stroke();
   ctx.restore();
 
-  // Category badge
+  // Category badge (with pulsing glow)
   const cat = quizQuestion.cat || '상식';
   const catColors = { '과학':'#00ffaa', '역사':'#ffaa00', '수학':'#88aaff', '지리':'#ff88ff', '국어':'#ffff88' };
   const catColor = catColors[cat] || '#88ffff';
+  const catPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.005);
   ctx.save();
-  ctx.fillStyle = catColor + '33';
+  ctx.fillStyle = catColor + '44';
   ctx.strokeStyle = catColor;
-  ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.roundRect(W/2-40, H/2-143, 80, 22, 8); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.shadowColor = catColor;
+  ctx.shadowBlur = 8 + 12 * catPulse;
+  ctx.beginPath(); ctx.roundRect(W/2-44, H/2-145, 88, 26, 10); ctx.fill(); ctx.stroke();
   ctx.textAlign = 'center';
   ctx.fillStyle = catColor;
-  ctx.font = 'bold 13px "맑은 고딕", sans-serif';
-  ctx.fillText(cat, W/2, H/2-127);
+  ctx.shadowBlur = 6 + 8 * catPulse;
+  ctx.font = 'bold 14px "맑은 고딕", sans-serif';
+  ctx.fillText(cat, W/2, H/2-128);
   ctx.restore();
 
   ctx.textAlign = 'center';
@@ -1040,6 +1100,11 @@ function answerQuiz(ans) {
   if (resultCorrect) {
     streak++;
     snd.correct();
+    // Double score: add bonus time for correct answers
+    if (doubleScore) {
+      time += 3; // +3 seconds bonus when double score is active
+      spawnExplosion(W/2, H/2-40, '#ff44ff', 12);
+    }
     if (streak === 10) {
       spawnExplosion(W/2, H*0.4, '#ffff00', 35);
       streakMsg = `${streak}연속!! 번개 실력!`; streakAlpha = 3;
@@ -1056,6 +1121,11 @@ function answerQuiz(ans) {
       streakMsg = `${streak}연속! 목숨 회복!`; streakAlpha = 3;
     } else if (streak >= 3) {
       streakMsg = `${streak}연속 정답!`; streakAlpha = 2.5;
+    }
+    // Feature 3: streak >= 5 visual effect
+    if (streak >= 5 && streakAlpha <= 0) {
+      streakMsg = `🔥 ${streak}연속 정답!`;
+      streakAlpha = 2.5;
     }
   } else {
     streak = 0;
@@ -1185,19 +1255,26 @@ function drawStart(dt) {
   });
   ctx.textBaseline = 'alphabetic';
 
+  // Difficulty selection label
+  ctx.fillStyle = 'rgba(180,200,255,0.85)';
+  ctx.font = 'bold 13px "맑은 고딕", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('난이도 선택', W/2, 400);
+  drawDiffButtons(W/2, 408);
+
   // Best time
   ctx.fillStyle='#ffcc00';
   ctx.font='bold 16px monospace';
   ctx.textAlign='center';
-  ctx.fillText(`최고 기록: ${bestTime.toFixed(1)}초`, W/2, 410);
+  ctx.fillText(`최고 기록: ${bestTime.toFixed(1)}초`, W/2, 460);
 
   // Leaderboard
-  drawLeaderboard(W/2, 430);
+  drawLeaderboard(W/2, 480);
 
   // Pulsing start button
   const pulse = 1+0.05*Math.sin(now*4);
   ctx.save();
-  ctx.translate(W/2, 538); ctx.scale(pulse, pulse);
+  ctx.translate(W/2, 570); ctx.scale(pulse, pulse);
   ctx.shadowColor='#ffee00'; ctx.shadowBlur=20;
   ctx.fillStyle='rgba(80,60,0,0.85)';
   ctx.beginPath(); ctx.roundRect(-160,-24,320,48,14); ctx.fill();
@@ -1373,6 +1450,10 @@ function loop(ts) {
     time+=dt;
     if (invincible>0) invincible-=dt;
     if (lifeAnimTimer>0) lifeAnimTimer-=dt;
+    if (doubleScore) {
+      doubleScoreTimer -= dt;
+      if (doubleScoreTimer <= 0) { doubleScore = false; doubleScoreTimer = 0; }
+    }
 
     // Per-second difficulty update
     if (ts - lastSecondTimestamp >= 1000) {
@@ -1581,10 +1662,11 @@ function startGame() {
   hitFlash=0; screenShake=0; isNewRecord=false;
   invincible=0; paused=false; streak=0; streakAlpha=0;
   powerups=[]; lastPowerupTime=-20; lastWave=1; waveAnnounce=0;
+  doubleScore=false; doubleScoreTimer=0;
   reachedMilestones.clear(); milestoneAlpha=0;
   // Reset difficulty
-  gameTimeSec=0; bulletSpeed=70; bulletSpawnRate=0.03;
-  difficultyLevel=1; diffAnnounce=0; diffAnnounceMsg='';
+  gameTimeSec=0; difficultyLevel=1; diffAnnounce=0; diffAnnounceMsg='';
+  applyDifficulty();
   spiralAngle=0; sinePhase=0;
   lifeAnimTimer=0; lifeAnimLost=-1;
   lastSecondTimestamp=0;
@@ -1629,13 +1711,23 @@ document.addEventListener('keydown', e=>{
 });
 
 canvas.addEventListener('click', e=>{
-  if(state==='start'||state==='dead'){startGame();return;}
+  const rect=canvas.getBoundingClientRect();
+  const cx=(e.clientX-rect.left)*W/rect.width;
+  const cy=(e.clientY-rect.top)*H/rect.height;
+  if(state==='start'){
+    // Check diff buttons first
+    for (const b of diffButtons) {
+      if (cx >= b.x && cx <= b.x+b.w && cy >= b.y && cy <= b.y+b.h) {
+        selectedDifficulty = b.diff;
+        return;
+      }
+    }
+    startGame(); return;
+  }
+  if(state==='dead'){startGame();return;}
   if(state==='quiz'){
-    const rect=canvas.getBoundingClientRect();
-    const mx=(e.clientX-rect.left)*W/rect.width;
-    const my=(e.clientY-rect.top)*H/rect.height;
-    if(mx>=W/2-120&&mx<=W/2-20&&my>=H/2-10&&my<=H/2+42) answerQuiz(true);
-    if(mx>=W/2+20&&mx<=W/2+120&&my>=H/2-10&&my<=H/2+42) answerQuiz(false);
+    if(cx>=W/2-120&&cx<=W/2-20&&cy>=H/2-10&&cy<=H/2+42) answerQuiz(true);
+    if(cx>=W/2+20&&cx<=W/2+120&&cy>=H/2-10&&cy<=H/2+42) answerQuiz(false);
   }
 });
 
@@ -1675,7 +1767,20 @@ vjoyZone.addEventListener('touchcancel',e => { e.preventDefault(); vjoyReset(); 
 // 캔버스 터치: 퀴즈 답변 + 시작/사망 화면
 canvas.addEventListener('touchend', e => {
   e.preventDefault();
-  if (state === 'start' || state === 'dead') { startGame(); return; }
+  if (state === 'start') {
+    const t = e.changedTouches[0];
+    const rect = canvas.getBoundingClientRect();
+    const cx = (t.clientX - rect.left) * W / rect.width;
+    const cy = (t.clientY - rect.top) * H / rect.height;
+    for (const b of diffButtons) {
+      if (cx >= b.x && cx <= b.x+b.w && cy >= b.y && cy <= b.y+b.h) {
+        selectedDifficulty = b.diff;
+        return;
+      }
+    }
+    startGame(); return;
+  }
+  if (state === 'dead') { startGame(); return; }
   if (state === 'quiz') {
     const t = e.changedTouches[0];
     const rect = canvas.getBoundingClientRect();
@@ -1700,4 +1805,3 @@ const __drawHUD = drawHUD;
 drawHUD = function() { __drawHUD(); updateVjoyVisibility(); };
 </script>
 </body>
-</html>
